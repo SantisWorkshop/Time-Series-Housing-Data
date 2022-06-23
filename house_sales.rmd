@@ -1,0 +1,131 @@
+---
+title: "House Sales"
+author: "Santi"
+date: '2022-06-22'
+output: pdf_document
+---
+Let's load the data and run some basic analysis on it.
+```{r Load Data}
+house_data <- read.csv('ma_lga_12345.csv')
+head(house_data, 10)
+
+# Check for possible duplicates and NA values.
+sum(is.na(house_data))
+sum(duplicated(house_data))
+
+# Run summary on the data
+summary(house_data)
+```
+
+We can see there doesn't seem to be anything unusual with the data when we look
+at the factors individually. Since we are doing time-series analysis, let's 
+convert the $saledate$ to a date format and the $bedrooms$ into a factor.
+
+```{r}
+house_data$saledate <- as.Date(house_data$saledate, '%d/%m/%Y')
+house_data$bedrooms <- as.factor(house_data$bedrooms)
+```
+
+Now let's plot $saledate$ with $MA$ (the sale amount). Notices that the 2 and 3
+bedroom housing units have two seemingly distinct lines. As we will soon see, 
+this is attributed to the fact that they're the only housing units to have sales
+data for houses and units i.e codominium. 
+
+```{r}
+{plot(house_data$saledate, house_data$MA, xlab = "Sale Date", ylab = "Sale Amount",
+     pch = 19, col = c('red','green','grey','black','blue')[house_data$bedrooms])
+legend('topleft', c('1','2','3','4','5'), fill = c('red','green','grey','black','blue'))}
+```
+
+With that in mind let's filter the $bedroom$ variable to run time-series on both 
+types of housing units. We will do the time-series using fiscal quarters.
+
+```{r, warning = FALSE}
+library(dplyr)
+one_br <- house_data %>% filter(bedrooms == '1')
+ts_one <- ts(one_br[,2], start = c(2007,4), frequency = 4)
+
+two_br_unit <- house_data %>% filter(bedrooms == '2', type == 'unit')
+ts_two_unit <- ts(two_br_unit[,2], start = c(2007,2), frequency = 4)
+
+two_br_house <- house_data %>% filter(bedrooms == '2', type == 'house')
+ts_two_house <- ts(two_br_house[,2], start = c(2007,3), frequency = 4)
+
+three_br_unit <- house_data %>% filter(bedrooms == '3', type == 'unit')
+ts_three_unit <- ts(three_br_unit[,2], start = c(2007,3), frequency = 4)
+
+three_br_house <- house_data %>% filter(bedrooms == '3', type == 'house')
+ts_three_house<- ts(three_br_house[,2], start = c(2007,1), frequency = 4)
+
+four_br_house <- house_data %>% filter(bedrooms == '4', type == 'house')
+ts_four_house <- ts(four_br_house[,2], start = c(2007,1), frequency = 4)
+
+five_br_house <- house_data %>% filter(bedrooms == '5', type == 'house')
+ts_five_house <- ts(five_br_house[,2], start = c(2007,3), frequency = 4)
+```
+
+Now that we have filtered and created our time-series object by unit type we can 
+run our ARIMA model and create a price forecast. Since we will essentially run
+the same lines of code for each  time-series object, let's make a function that:
+\begin{itemize}
+\item Runs ARIMA on the time-series object for each bedroom, unity type combination.
+\item Forecasts $n$ points. 
+\item Plots the forecast data.
+\end{itemize}
+
+```{r warning = FALSE}
+library(forecast)
+library(Metrics)
+
+housingForecast <- function(time_series, forecast_points, unit_type, brs)
+{
+  # Run ARIMA and create summary.
+  arima_model <- auto.arima(time_series)
+  summary(arima_model)
+  
+  # Forecast the number of points required
+  data_forecast <- forecast(arima_model, forecast_points)
+  print(data_forecast)
+  
+  # Plot the forecast data.
+  plot(data_forecast, xlab = 'Year', ylab = 'Amount ($)',
+       main = paste('Time series forecast for ',brs,'- bdr',unit_type), 
+       # This makes our x-axis consistent and more readble.
+       xaxp = c(2007, (2020+forecast_points), ((2020+forecast_points) - 2007) %% 1000))
+  return(summary(arima_model))
+}
+```
+
+So now let's do some forcasting.
+
+# One-Bedroom Unit Forecast
+```{r}
+housingForecast(ts_one, 10, 'unit', 1)
+```
+# Two-Bedroom Unit Forecast
+```{r}
+housingForecast(ts_two_unit, 10, 'unit', 2)
+```
+# Three-Bedroom Unit Forecast
+```{r}
+housingForecast(ts_three_unit, 10, 'unit', 3)
+```
+# Two-Bedroom House Forecast
+```{r}
+housingForecast(ts_two_house, 10, 'house', 2)
+```
+# Three-Bedroom House Forecast
+
+```{r}
+housingForecast(ts_three_house, 10, 'house', 3)
+```
+# Four-Bedroom House Forecast
+
+```{r}
+housingForecast(ts_four_house, 10, 'house', 4)
+```
+# Five-Bedroom House Forecast
+
+```{r}
+housingForecast(ts_five_house, 10, 'house', 5)
+```
